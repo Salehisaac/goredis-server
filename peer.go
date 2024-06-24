@@ -11,12 +11,14 @@ import (
 type Peer struct {
     conn net.Conn
 	msgCh chan Message
+	delCh chan *Peer
 }
 
-func NewPeer(conn net.Conn, msgCh chan Message) *Peer {
+func NewPeer(conn net.Conn, msgCh chan Message, delCh chan *Peer) *Peer {
 	return &Peer{
 		conn: conn,
 		msgCh: msgCh,
+		delCh: delCh,
 	}
 }
 
@@ -29,14 +31,16 @@ func(p *Peer) readLoop()error{
 	for {
 		v, _, err := rd.ReadValue()
 		if err == io.EOF {
+			p.delCh <- p
 			break
 		}
 		if err != nil {
 			log.Fatal(err)
 		}
-		var cmd Command
+		
 		if v.Type() == resp.Array {
 			for _, value := range v.Array() {
+				var cmd Command
 				switch value.String(){
 				case CommandGET:
 					if len(v.Array()) != 2 {
@@ -44,11 +48,6 @@ func(p *Peer) readLoop()error{
 					}
 					cmd = GetCommand{
 						key: v.Array()[1].Bytes(), 
-					}
-
-					p.msgCh <- Message{
-						cmd: cmd,
-						peer: p,
 					}
 
 				case CommandSET:
@@ -59,11 +58,17 @@ func(p *Peer) readLoop()error{
 						key: v.Array()[1].Bytes(), 
 						val: v.Array()[2].Bytes(),
 					}
-					p.msgCh <- Message{
-						cmd: cmd,
-						peer: p,
+				case CommandHELLO:
+					cmd = HelloCommand{
+						value: v.Array()[1].String(),
 					}
 				default:
+					panic("this command is not being handled")
+				}
+
+				p.msgCh <- Message{
+					cmd: cmd,
+					peer: p,
 				}
 			}
 		}

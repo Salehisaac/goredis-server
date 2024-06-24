@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 
@@ -15,8 +16,9 @@ func TestNewClient1(t *testing.T){
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer client.Close()
 	time.Sleep(time.Second)
-		if err := client.Set(context.Background(), "foo", "1"); err != nil {
+		if err := client.Set(context.Background(), "foo", 1); err != nil {
 			log.Fatal(err)
 		}
 		val ,err := client.Get(context.Background(), "foo") 
@@ -24,6 +26,26 @@ func TestNewClient1(t *testing.T){
 			log.Fatal(err)
 		}
 		fmt.Println(val)
+}
+
+
+func TestRedis(t *testing.T){
+	rdb := redis.NewClient(&redis.Options{
+        Addr:     "localhost:5001",
+        Password: "", // no password set
+        DB:       0,  // use default DB
+    })
+
+    err := rdb.Set(context.Background(), "key", "value", 0).Err()
+    if err != nil {
+        panic(err)
+    }
+
+    val, err := rdb.Get(context.Background(), "key").Result()
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println("key", val)
 }
 
 
@@ -48,33 +70,3 @@ func TestNewClient(t *testing.T){
 	}
 }
 
-func TestNewClients(t *testing.T){
-	wg := sync.WaitGroup{}
-	wg.Add(10)
-	for i := 0; i < 10; i++ {
-		go func(it int){
-			client,err := New("localhost:5001")
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer client.Close()
-			key := fmt.Sprintf("client_foo_%d", it)
-			value := fmt.Sprintf("client_bar_%d", it)
-			if err := client.Set(context.Background(), key, value); err != nil {
-				log.Fatal(err)
-			}
-			val ,err := client.Get(context.Background(), key) 
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf("client %d got this value back => %s\n", it, val)
-			wg.Done()
-		}(i)
-
-	}
-	wg.Wait()
-}
-
-func (c *Client) Close()error{
-	return c.conn.Close()
-}
